@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#070c12" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="description" content="88 键钢琴音准调音器，实时麦克风音高曲线与基准线对比" />
+<title>音准调音器</title>
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/png" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<link rel="stylesheet" href="css/app.css" />
+</head>
+<body>
+<div class="app">
+
+  <header class="topbar">
+    <div class="brand">
+      <svg class="brand-logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <path d="M3 20c2.6 0 2.6-9 5.2-9s2.6 13 5.2 13 2.6-17 5.2-17 2.6 11 5.2 11 2.6-8 5.2-8"
+              stroke="url(#lg)" stroke-width="2.2" stroke-linecap="round" />
+        <defs>
+          <linearGradient id="lg" x1="0" y1="0" x2="32" y2="32">
+            <stop stop-color="#4be3c0" /><stop offset="1" stop-color="#3a9bff" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <span class="brand-name">音准调音器</span>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="btnSound" class="chip-btn is-on" aria-pressed="true" title="参考音开关">
+        <svg class="chip-ico" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M4 9.5h3.2L12 5.5v13L7.2 14.5H4a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1Z"
+                stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" />
+          <path class="wave" d="M16 8.8a4.6 4.6 0 0 1 0 6.4M18.8 6.2a8.4 8.4 0 0 1 0 11.6"
+                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+          <path class="slash" d="M16 8l6 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+        <span class="chip-label">参考音</span>
+      </button>
+      <button id="btnRun" class="run-btn">开始调音</button>
+    </div>
+  </header>
+
+  <main class="stage">
+
+    <aside class="piano" id="pianoPanel">
+      <div class="piano-strip">
+        <span class="piano-strip-text">钢 琴</span>
+        <button class="piano-toggle" id="btnCollapse" title="收起 / 展开钢琴键" aria-label="收起或展开钢琴键">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path class="chev" d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      </div>
+      <div class="piano-scroll" id="pianoScroll">
+        <div class="piano-keys" id="pianoKeys"></div>
+      </div>
+    </aside>
+
+    <section class="main">
+
+      <section class="chart-card">
+        <header class="chart-head">
+          <div class="chart-titles">
+            <h2 class="chart-title">音准曲线</h2>
+            <p class="chart-sub">最近 20 秒 · 纵轴为音分偏差 (¢)</p>
+          </div>
+          <div class="chart-tools">
+            <div class="level" title="麦克风输入电平">
+              <i id="levelBar"></i>
+            </div>
+            <button class="ghost-btn" id="btnClear" title="清空曲线">清空</button>
+          </div>
+        </header>
+        <div class="canvas-wrap">
+          <canvas id="chart"></canvas>
+          <div class="canvas-hint" id="chartHint">点击右上角「开始调音」并允许麦克风权限</div>
+        </div>
+      </section>
+
+      <section class="readout">
+        <div class="readout-main">
+          <div class="note-block">
+            <span class="note-name" id="noteName">—</span>
+            <span class="note-octave" id="noteOctave"></span>
+          </div>
+          <div class="readout-info">
+            <div class="freq" id="freq">— — — Hz</div>
+            <div class="cents" id="cents">— ¢</div>
+          </div>
+          <div class="ref-chip-wrap">
+            <button class="ref-chip is-auto" id="refChip" title="点击清除所选基准音">
+              <span class="ref-chip-label">基准</span>
+              <strong id="refChipValue">自动</strong>
+              <span class="ref-chip-x" id="refChipX" hidden>✕</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="meter">
+          <div class="meter-track">
+            <span class="meter-zone"></span>
+            <span class="meter-zero"></span>
+            <span class="meter-needle" id="needle"></span>
+          </div>
+          <div class="meter-scale">
+            <span>-50</span><span>-25</span><span>0</span><span>+25</span><span>+50</span>
+          </div>
+        </div>
+
+        <div class="status-line">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">未开始</span>
+        </div>
+      </section>
+
+    </section>
+  </main>
+</div>
+
+<script src="js/notes.js"></script>
+<script src="js/pitch.js"></script>
+<script src="js/tone.js"></script>
+<script src="js/keyboard.js"></script>
+<script src="js/chart.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
