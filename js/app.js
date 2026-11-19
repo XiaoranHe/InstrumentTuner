@@ -15,7 +15,6 @@
     pianoScroll: document.getElementById('pianoScroll'),
     pianoKeys: document.getElementById('pianoKeys'),
     chart: document.getElementById('chart'),
-    chartHint: document.getElementById('chartHint'),
     noteName: document.getElementById('noteName'),
     noteOctave: document.getElementById('noteOctave'),
     freq: document.getElementById('freq'),
@@ -126,8 +125,6 @@
 
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setStatus('当前环境不支持麦克风（需 HTTPS 或 localhost）', 'error');
-      el.chartHint.hidden = false;
-      el.chartHint.textContent = '当前环境不支持麦克风采集\n请通过 https:// 或 localhost 访问本页面';
       return;
     }
 
@@ -207,7 +204,6 @@
     el.btnRun.disabled = false;
     el.btnRun.textContent = '停止调音';
     el.btnRun.classList.add('is-running');
-    el.chartHint.hidden = true;
     chart.setStatus('监听中 · 采样率 ' + Math.round(audio.ctx.sampleRate / 1000) + 'kHz');
     setStatus('麦克风已开启，等待声音…', 'live');
   }
@@ -223,8 +219,6 @@
     else if (err && err.name === 'NotFoundError') msg = '未找到麦克风设备';
 
     setStatus(msg, 'error');
-    el.chartHint.hidden = false;
-    el.chartHint.textContent = msg;
 
     if (audio.stream) {
       audio.stream.getTracks().forEach(function (t) { t.stop(); });
@@ -268,8 +262,6 @@
     el.btnRun.textContent = '开始调音';
     el.btnRun.classList.remove('is-running');
     el.levelBar.style.width = '0%';
-    el.chartHint.textContent = '已停止 · 点击「开始调音」重新采集';
-    el.chartHint.hidden = chart.hasData();
     chart.setStatus('已停止');
     setStatus('未开始');
     resetReadout();
@@ -419,7 +411,7 @@
   }
 
   function initChart() {
-    chart = new global.PitchChart(el.chart, { windowMs: 20000, rangeCents: 50 });
+    chart = new global.PitchChart(el.chart, { windowMs: 20000 });
     chart.setStatus('等待开始');
   }
 

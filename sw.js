@@ -3,7 +3,7 @@
  * ============================================================ */
 'use strict';
 
-var CACHE_NAME = 'mt-tuner-v1';
+var CACHE_NAME = 'mt-tuner-v2';
 
 var PRECACHE = [
   './',

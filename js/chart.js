@@ -1,8 +1,8 @@
 /* ============================================================
  * chart.js · 音准曲线图（Canvas 2D）
  *  - 横轴：时间（最近 N 秒滚动）
- *  - 纵轴：音分偏差 ±50¢
- *  - 按下钢琴键后，绘制对应的基准线
+ *  - 纵轴：固定音高轴 A0 → C8（低音在下，高音在上）
+ *  - 按下钢琴键后，在对应音高高度绘制基准线
  * ============================================================ */
 (function (global) {
   'use strict';
@@ -18,7 +18,6 @@
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.windowMs = options.windowMs || 20000;
-    this.rangeCents = options.rangeCents || 50;
 
     this.samples = [];
     this.refMidi = null; // 用户选中的基准键（null = 自动跟随）
@@ -123,7 +122,7 @@
 
     ctx.clearRect(0, 0, W, H);
 
-    var padL = 30;
+    var padL = 34;
     var padR = 10;
     var padT = 10;
     var padB = 16;
@@ -131,32 +130,40 @@
     var plotH = H - padT - padB;
     if (plotW < 20 || plotH < 20) return;
 
-    var yMid = padT + plotH / 2;
-    var pxPerCent = plotH / (this.rangeCents * 2);
-    var range = this.rangeCents;
+    // 纵轴固定为钢琴全音域 A0(21) → C8(108)：低音在下，高音在上
+    var lo = Notes.MIDI_MIN;
+    var hi = Notes.MIDI_MAX;
+    var span = hi - lo;
 
     var now = (global.performance || Date).now();
     var t0 = now - this.windowMs;
     var pxPerMs = plotW / this.windowMs;
 
     var xOf = function (t) { return padL + (t - t0) * pxPerMs; };
-    var yOf = function (cents) { return yMid - clamp(cents, -range, range) * pxPerCent; };
+    var yOf = function (m) { return padT + plotH * (1 - (clamp(m, lo, hi) - lo) / span); };
 
-    /* --- 1. 容差带（±5¢） --- */
-    ctx.fillStyle = 'rgba(67, 226, 191, 0.10)';
-    ctx.fillRect(padL, yOf(-5), plotW, yOf(5) - yOf(-5));
-
-    /* --- 2. 横向网格（每 10¢） --- */
-    ctx.strokeStyle = 'rgba(255,255,255,0.055)';
-    ctx.lineWidth = 1;
-    for (var c = -50; c <= 50; c += 10) {
-      if (c === 0) continue;
-      var y = yOf(c);
+    /* --- 1. 半音纹理（空间够时才画，避免小屏上过密） --- */
+    if (plotH / span >= 3.2) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.022)';
+      ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.moveTo(padL, y + 0.5);
-      ctx.lineTo(padL + plotW, y + 0.5);
+      for (var m1 = lo; m1 <= hi; m1++) {
+        var sy = Math.round(yOf(m1)) + 0.5;
+        ctx.moveTo(padL, sy);
+        ctx.lineTo(padL + plotW, sy);
+      }
       ctx.stroke();
     }
+
+    /* --- 2. 八度网格（每个 C 一条稍亮横线） --- */
+    ctx.strokeStyle = 'rgba(255,255,255,0.085)';
+    ctx.beginPath();
+    for (var m2 = 24; m2 <= hi; m2 += 12) {
+      var oy = Math.round(yOf(m2)) + 0.5;
+      ctx.moveTo(padL, oy);
+      ctx.lineTo(padL + plotW, oy);
+    }
+    ctx.stroke();
 
     /* --- 3. 纵向时间网格（每 5 秒） --- */
     ctx.strokeStyle = 'rgba(255,255,255,0.04)';
@@ -168,31 +175,36 @@
       ctx.stroke();
     }
 
-    /* --- 4. 纵轴刻度 --- */
+    /* --- 4. 纵轴音名刻度 --- */
     ctx.fillStyle = 'rgba(125,143,160,0.85)';
     ctx.font = '9px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
-    var ticks = [50, 25, 0, -25, -50];
-    for (var i = 0; i < ticks.length; i++) {
-      var tv = ticks[i];
-      ctx.fillText(tv > 0 ? '+' + tv : String(tv), padL - 6, yOf(tv));
+    for (var m3 = 24; m3 <= hi; m3 += 12) {
+      var nm = Notes.midiToName(m3);
+      ctx.fillText(nm.label, padL - 5, yOf(m3));
+    }
+    // A0 只在与 C1 拉开足够间距时标注，避免小屏重叠
+    if (yOf(lo) - yOf(24) > 14) {
+      ctx.fillText('A0', padL - 5, Math.min(yOf(lo), padT + plotH - 6));
     }
 
-    /* --- 5. 零线与基准线 --- */
+    /* --- 5. 基准线：画在选中键对应的音高高度 --- */
     var isKeyRef = this.refMidi !== null && this.refMidi !== undefined;
 
     if (isKeyRef) {
+      var refY = yOf(this.refMidi);
       var refName = Notes.midiToName(this.refMidi);
       var refFreq = Notes.midiToFreq(this.refMidi);
 
-      // 发光基准带
-      var glow = ctx.createLinearGradient(0, yMid - 14, 0, yMid + 14);
-      glow.addColorStop(0, 'rgba(67,226,191,0)');
-      glow.addColorStop(0.5, 'rgba(67,226,191,0.16)');
-      glow.addColorStop(1, 'rgba(67,226,191,0)');
-      ctx.fillStyle = glow;
-      ctx.fillRect(padL, yMid - 14, plotW, 28);
+      // 该键 ±50¢（半个半音）范围的准音带
+      var halfH = Math.max(3, plotH / span / 2);
+      var band = ctx.createLinearGradient(0, refY - halfH, 0, refY + halfH);
+      band.addColorStop(0, 'rgba(67,226,191,0)');
+      band.addColorStop(0.5, 'rgba(67,226,191,0.20)');
+      band.addColorStop(1, 'rgba(67,226,191,0)');
+      ctx.fillStyle = band;
+      ctx.fillRect(padL, refY - halfH, plotW, halfH * 2);
 
       ctx.save();
       ctx.strokeStyle = 'rgba(67, 226, 191, 0.95)';
@@ -200,17 +212,19 @@
       ctx.shadowColor = 'rgba(67, 226, 191, 0.85)';
       ctx.shadowBlur = 8;
       ctx.beginPath();
-      ctx.moveTo(padL, yMid + 0.5);
-      ctx.lineTo(padL + plotW, yMid + 0.5);
+      ctx.moveTo(padL, refY + 0.5);
+      ctx.lineTo(padL + plotW, refY + 0.5);
       ctx.stroke();
       ctx.restore();
 
-      // 基准线标签
+      // 基准线标签（靠近上下边缘时自动翻转，避免超出画布）
       var label = refName.label + ' · ' + Notes.formatFreq(refFreq);
       ctx.font = '600 10px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
       var tw = ctx.measureText(label).width;
       var bx = padL + plotW - tw - 14;
-      var by = yMid - 9;
+      var by = refY - 9;
+      if (by < padT + 8) by = refY + 9;
+      if (by > padT + plotH - 8) by = refY - 9;
       ctx.fillStyle = 'rgba(67, 226, 191, 0.92)';
       roundRect(ctx, bx, by - 8, tw + 10, 16, 8);
       ctx.fill();
@@ -218,55 +232,34 @@
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
       ctx.fillText(label, bx + 5, by + 0.5);
-    } else {
-      // 自动模式：中性零线（虚线）
-      ctx.save();
-      ctx.setLineDash([4, 4]);
-      ctx.strokeStyle = 'rgba(255,255,255,0.22)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(padL, yMid + 0.5);
-      ctx.lineTo(padL + plotW, yMid + 0.5);
-      ctx.stroke();
-      ctx.restore();
     }
 
-    /* --- 6. 曲线 --- */
+    /* --- 6. 曲线（绝对音高 + 中点二次贝塞尔平滑） --- */
     var samples = this.samples;
     var first = 0;
     while (first < samples.length && samples[first].t < t0 - 1000) first++;
 
     if (samples.length - first > 1) {
-      var grad = ctx.createLinearGradient(0, padT, 0, padT + plotH);
-      grad.addColorStop(0.00, 'rgba(255, 107, 107, 0.95)');
-      grad.addColorStop(0.30, 'rgba(255, 200, 87, 0.95)');
-      grad.addColorStop(0.44, 'rgba(67, 226, 191, 1)');
-      grad.addColorStop(0.56, 'rgba(67, 226, 191, 1)');
-      grad.addColorStop(0.70, 'rgba(255, 200, 87, 0.95)');
-      grad.addColorStop(1.00, 'rgba(255, 107, 107, 0.95)');
-
-      // 先构建分段路径（基准音变化处断开），再双层描边：底层象光晕，顶层主曲线
-      var paths = [];
-      var cur = null;
-      var prevRef = null;
+      // 按时间断层切分：只在静音间隔过长处断开（绝对音高连续，无需按基准音断线）
+      var segs = [];
+      var pts = [];
       var lastX = -Infinity;
 
       for (var k = first; k < samples.length; k++) {
         var sp = samples[k];
         var x = xOf(sp.t);
-        var cents = (sp.m - sp.ref) * 100;
-        var y2 = yOf(cents);
-
-        if (!cur || sp.ref !== prevRef || x - lastX > 120) {
-          cur = new Path2D();
-          cur.moveTo(x, y2);
-          paths.push(cur);
-        } else {
-          cur.lineTo(x, y2);
+        var y = yOf(sp.m);
+        if (pts.length && x - lastX > 120) {
+          segs.push(pts);
+          pts = [];
         }
-        prevRef = sp.ref;
+        pts.push({ x: x, y: y });
         lastX = x;
       }
+      if (pts.length) segs.push(pts);
+
+      var paths = [];
+      for (var g = 0; g < segs.length; g++) paths.push(smoothPath(segs[g]));
 
       ctx.save();
       ctx.beginPath();
@@ -281,7 +274,7 @@
       for (var a = 0; a < paths.length; a++) ctx.stroke(paths[a]);
 
       // 主曲线
-      ctx.strokeStyle = grad;
+      ctx.strokeStyle = 'rgba(67, 226, 191, 0.95)';
       ctx.lineWidth = 2;
       for (var b = 0; b < paths.length; b++) ctx.stroke(paths[b]);
 
@@ -291,17 +284,22 @@
       var live = this.live;
       if (live && now - live.t < 1200) {
         var lx = xOf(live.t);
-        var ly = yOf((live.m - live.ref) * 100);
+        var ly = yOf(live.m);
         if (lx > padL && lx < padL + plotW) {
+          var curDev = (live.m - Math.round(live.m)) * 100;
+          var devAbs = Math.abs(curDev);
+          var dotColor = devAbs <= 5 ? '#b9fff0' : devAbs <= 15 ? '#ffd977' : '#ff9b8a';
+          var haloColor = devAbs <= 5 ? 'rgba(67, 226, 191, 0.20)' : 'rgba(255, 180, 120, 0.20)';
+
           ctx.save();
           ctx.beginPath();
           ctx.arc(lx, ly, 8, 0, Math.PI * 2);
-          ctx.fillStyle = 'rgba(67, 226, 191, 0.18)';
+          ctx.fillStyle = haloColor;
           ctx.fill();
           ctx.beginPath();
           ctx.arc(lx, ly, 3.4, 0, Math.PI * 2);
-          ctx.fillStyle = '#b9fff0';
-          ctx.shadowColor = 'rgba(67, 226, 191, 0.95)';
+          ctx.fillStyle = dotColor;
+          ctx.shadowColor = dotColor;
           ctx.shadowBlur = 10;
           ctx.fill();
           ctx.restore();
@@ -319,21 +317,16 @@
       ctx.fillText(this.statusText, padL + 2, padT + 2);
     }
 
-    // 实时音名（右上角）
+    // 实时音名 + 与本音的音分偏差（右上角）
     if (this.live && now - this.live.t < 1200) {
-      var cur = Notes.midiToName(this.live.m);
-      var dev = (this.live.m - this.live.ref) * 100;
-      var txt = cur.label + '  ' + (dev >= 0 ? '+' : '') + dev.toFixed(0) + '¢';
+      var liveInfo = Notes.midiToName(this.live.m);
+      var dev = (this.live.m - liveInfo.midi) * 100;
+      var txt = liveInfo.label + '  ' + (dev >= 0 ? '+' : '') + dev.toFixed(0) + '¢';
       ctx.font = '600 11px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
       ctx.textAlign = 'right';
-      var over = Math.abs(dev) > range;
-      ctx.fillStyle = over ? 'rgba(255,200,87,0.95)' : 'rgba(185, 255, 240, 0.95)';
+      ctx.fillStyle = Math.abs(dev) <= 5 ? 'rgba(185, 255, 240, 0.95)'
+        : Math.abs(dev) <= 15 ? 'rgba(255, 217, 119, 0.95)' : 'rgba(255, 155, 138, 0.95)';
       ctx.fillText(txt, padL + plotW - 2, padT + 2);
-      if (over) {
-        ctx.font = '9px -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif';
-        ctx.fillStyle = 'rgba(255, 200, 87, 0.7)';
-        ctx.fillText('超出显示范围', padL + plotW - 2, padT + 15);
-      }
     }
 
     // 时间轴尾部
@@ -344,6 +337,29 @@
     ctx.textAlign = 'right';
     ctx.fillText('现在', padL + plotW - 2, padT + plotH + 7);
   };
+
+  /** 用中点二次贝塞尔把折线平滑成曲线 */
+  function smoothPath(pts) {
+    var p = new Path2D();
+    var n = pts.length;
+    if (!n) return p;
+    p.moveTo(pts[0].x, pts[0].y);
+    if (n === 1) {
+      p.lineTo(pts[0].x + 0.01, pts[0].y);
+      return p;
+    }
+    if (n === 2) {
+      p.lineTo(pts[1].x, pts[1].y);
+      return p;
+    }
+    for (var i = 1; i < n - 1; i++) {
+      var mx = (pts[i].x + pts[i + 1].x) / 2;
+      var my = (pts[i].y + pts[i + 1].y) / 2;
+      p.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+    }
+    p.quadraticCurveTo(pts[n - 1].x, pts[n - 1].y, pts[n - 1].x, pts[n - 1].y);
+    return p;
+  }
 
   function roundRect(ctx, x, y, w, h, r) {
     var rr = Math.min(r, w / 2, h / 2);

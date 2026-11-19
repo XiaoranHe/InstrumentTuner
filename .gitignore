@@ -8,3 +8,5 @@ desktop.ini
 # logs / temp
 *.log
 *.tmp
+.tmp-*
+.vercel-tmp/

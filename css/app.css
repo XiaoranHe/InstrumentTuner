@@ -463,25 +463,6 @@ body {
   height: 100%;
 }
 
-.canvas-hint {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  padding: 0 26px;
-  text-align: center;
-  font-size: 12px;
-  line-height: 1.7;
-  color: var(--text-mute);
-  pointer-events: none;
-  white-space: pre-line;
-  transition: opacity 0.25s;
-}
-
-.canvas-hint[hidden] {
-  display: none;
-}
-
 /* ---------------------------- 读数区 ---------------------------- */
 
 .readout {
